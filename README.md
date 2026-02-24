@@ -1,77 +1,77 @@
 # sponsor-avatar-svg
 
-自动从爱发电（Afdian）与 OpenCollective 拉取赞助者并生成头像集合 SVG。
+Generate a sponsor avatar collage SVG from Afdian and OpenCollective.
 
-当前支持：
-- 爱发电（`api` 官方开放接口）
-- OpenCollective（`members/all.json`）
+Supported sources:
+- Afdian (`api/open/query-sponsor`)
+- OpenCollective (`/{slug}/members/all.json`)
 
-## 特性
+## Features
 
-- 支持按金额或时间排序
-- 输出纯 SVG，可直接用于 README、官网、文档页
-- 支持去重（按 profile URL 或 avatar URL）
+- Sort by amount or time
+- Generate pure SVG output for README/web/docs usage
+- Deduplicate sponsors by profile URL or avatar URL
 
-## 环境要求
+## Requirements
 
 - Node.js `>=18`
 
-## 快速开始
+## Quick Start
 
 ```bash
 cp .env.example .env
-# 编辑 .env 填入 AFDIAN_USER_ID / AFDIAN_TOKEN
+# Edit .env and fill AFDIAN_USER_ID / AFDIAN_TOKEN
 node src/cli.js
 ```
 
-默认输出 `dist/sponsors.svg`。
+Default output path: `dist/sponsors.svg`.
 
-## 环境变量
+## Environment Variables
 
-参考模板：[.env.example](/Users/soulter/Developer/opensponsor/.env.example)
+Template: [.env.example](/Users/soulter/Developer/opensponsor/.env.example)
 
-必填：
+Required:
 - `AFDIAN_USER_ID`
 - `AFDIAN_TOKEN`
 
-可选：
-- `AFDIAN_PER_PAGE`（默认 `100`）
-- `AFDIAN_MAX_PAGES`（默认 `30`）
-- `OPENCOLLECTIVE_SLUGS`：逗号分隔 slug（例如 `opencollective,webpack`）
-- `OPENCOLLECTIVE_BASE_URL`（默认 `https://opencollective.com`）
-- `OPENCOLLECTIVE_OPTIONAL`：`true/false`（默认 `true`，请求失败时是否忽略）
-- `OUTPUT_PATH`（默认 `dist/sponsors.svg`）
-- `SORT_BY`：`amount` / `time`（默认 `amount`）
-- `SORT_ORDER`：`asc` / `desc`（默认 `desc`）
-- `LIMIT`（默认 `120`）
-- `SVG_AVATAR_SIZE`（默认 `60`）
-- `SVG_GAP`（默认 `10`）
-- `SVG_PADDING`（默认 `20`）
-- `SVG_COLUMNS`（默认 `10`）
-- `SVG_BACKGROUND`（默认 `#f7fafc`）
-- `SVG_RADIUS`（默认 `50%`）
+Optional:
+- `AFDIAN_PER_PAGE` (default `100`)
+- `AFDIAN_MAX_PAGES` (default `30`)
+- `OPENCOLLECTIVE_SLUGS` comma-separated slugs, e.g. `opencollective,webpack`
+- `OPENCOLLECTIVE_BASE_URL` (default `https://opencollective.com`)
+- `OPENCOLLECTIVE_OPTIONAL` `true/false` (default `true`)
+- `OUTPUT_PATH` (default `dist/sponsors.svg`)
+- `SORT_BY` `amount|time` (default `amount`)
+- `SORT_ORDER` `asc|desc` (default `desc`)
+- `LIMIT` (default `120`)
+- `SVG_AVATAR_SIZE` (default `60`)
+- `SVG_GAP` (default `10`)
+- `SVG_PADDING` (default `20`)
+- `SVG_COLUMNS` (default `10`)
+- `SVG_BACKGROUND` (default `#f7fafc`)
+- `SVG_RADIUS` (default `50%`)
 
-## Cloudflare Pages 动态 SVG（30 分钟缓存）
+## Cloudflare Pages Dynamic SVG (30-Min Cache)
 
-已内置 Pages Functions 路由：`/sponsors.svg`  
-文件位置：[sponsors.svg.js](/Users/soulter/Developer/opensponsor/functions/sponsors.svg.js)
+Built-in Pages Function route: `/sponsors.svg`  
+File: [sponsors.svg.js](/Users/soulter/Developer/opensponsor/functions/sponsors.svg.js)
 
-部署时在 Cloudflare Pages 配置环境变量：
+Set environment variables in Cloudflare Pages:
 - `AFDIAN_USER_ID`
 - `AFDIAN_TOKEN`
-- `OPENCOLLECTIVE_SLUGS`（可选）
+- `OPENCOLLECTIVE_SLUGS` (optional)
 
-请求示例：
+Example request:
 
 ```text
 /sponsors.svg?sortBy=amount&sortOrder=desc&limit=120&columns=10&ocSlugs=opencollective,webpack
 ```
 
-缓存策略已内置为 30 分钟：
+Cache policy:
 - `Cache-Control: public, max-age=1800, s-maxage=1800`
-- 并使用 `caches.default` 做边缘缓存
+- Edge cache via `caches.default`
 
-## CLI 参数
+## CLI
 
 ```bash
 node src/cli.js \
@@ -86,16 +86,13 @@ node src/cli.js \
   --debug
 ```
 
-`--stdout` 开启后会把 sponsor 数据输出到标准输出。
-- `--stdout-format jsonl`：每行一条 sponsor（默认，适合管道处理）
-- `--stdout-format json`：最后输出完整 JSON 数组
-- `--debug`：把每个 provider 的抓取结果和错误输出到标准错误
+Notes:
+- `--stdout` prints sponsor data to stdout
+- `--stdout-format jsonl` prints one sponsor per line (default)
+- `--stdout-format json` prints one JSON array
+- `--debug` prints provider diagnostics to stderr
 
-## 自动化（可选）
-
-可使用 GitHub Actions 定时生成并提交 SVG，见 [generate-sponsors-svg.yml](/Users/soulter/Developer/opensponsor/.github/workflows/generate-sponsors-svg.yml)。
-
-## 开发测试
+## Tests
 
 ```bash
 node --test
