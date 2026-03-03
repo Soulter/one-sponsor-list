@@ -68,7 +68,8 @@ Optional:
         {
           "name": "Your Company",
           "profileUrl": "https://example.com",
-          "logo": "./assets/your-logo.png"
+          "logo": "./assets/your-logo.png",
+          "expiresAt": "2026-12-31T23:59:59Z"
         }
       ]
     },
@@ -84,6 +85,7 @@ Optional:
 
 Notes:
 - `special.sponsors[].logo` supports local file path / remote URL / data URI
+- `special.sponsors[].expiresAt` supports ISO datetime; expired entries are skipped
 - `special` tier renders centered logo (no sponsor name text)
 - `special` logos are laid out horizontally and auto-wrap by canvas width
 - `all` tier merges Afdian + OpenCollective and renders avatar grid

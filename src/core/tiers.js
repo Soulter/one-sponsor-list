@@ -14,16 +14,18 @@ export async function buildTierSections(input, options = {}) {
   const configDir = options.configDir ?? process.cwd();
   const cache = options.cache ?? new Map();
   const fetchImpl = options.fetchImpl ?? fetch;
+  const now = resolveNow(options.now);
 
   return Promise.all(
     tiers.map(async (tier) => {
       if (tier.type === "special") {
+        const activeSponsors = (tier.sponsors ?? []).filter((sponsor) => !isExpiredSponsor(sponsor, now));
         return {
           id: tier.id,
           type: "special",
           title: tier.title,
           sponsors: await Promise.all(
-            (tier.sponsors ?? []).map(async (sponsor) => ({
+            activeSponsors.map(async (sponsor) => ({
               ...sponsor,
               logoDataUri: await resolveLogoSource(sponsor.logo, {
                 baseDir: configDir,
@@ -82,4 +84,32 @@ export async function resolveLogoSource(source, options = {}) {
   const result = bytesToDataUri(file, mime);
   cache.set(key, result);
   return result;
+}
+
+function isExpiredSponsor(sponsor, nowMs) {
+  const raw = sponsor?.expiresAt;
+  if (!raw) {
+    return false;
+  }
+  const parsed = Date.parse(String(raw));
+  if (Number.isNaN(parsed)) {
+    return false;
+  }
+  return parsed <= nowMs;
+}
+
+function resolveNow(input) {
+  if (input instanceof Date) {
+    return input.getTime();
+  }
+  if (typeof input === "number" && Number.isFinite(input)) {
+    return input;
+  }
+  if (typeof input === "string") {
+    const parsed = Date.parse(input);
+    if (!Number.isNaN(parsed)) {
+      return parsed;
+    }
+  }
+  return Date.now();
 }

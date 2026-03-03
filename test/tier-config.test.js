@@ -58,3 +58,37 @@ test("buildTierSections resolves local logo file as data URI", async () => {
   assert.equal(tiers[1].sponsors.length, 1);
   assert.equal(tiers[1].sponsors[0].id, "1");
 });
+
+test("buildTierSections skips expired special sponsors", async () => {
+  const tiers = await buildTierSections(
+    {
+      tiers: [
+        {
+          id: "special",
+          type: "special",
+          title: "Special Sponsor",
+          sponsors: [
+            {
+              id: "expired",
+              name: "Expired",
+              logo: "data:image/png;base64,AAAA",
+              expiresAt: "2026-01-01T00:00:00Z"
+            },
+            {
+              id: "active",
+              name: "Active",
+              logo: "data:image/png;base64,BBBB",
+              expiresAt: "2027-01-01T00:00:00Z"
+            }
+          ]
+        }
+      ],
+      sponsors: []
+    },
+    { now: "2026-03-03T00:00:00Z" }
+  );
+
+  assert.equal(tiers.length, 1);
+  assert.equal(tiers[0].sponsors.length, 1);
+  assert.equal(tiers[0].sponsors[0].id, "active");
+});

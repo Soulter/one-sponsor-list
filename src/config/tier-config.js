@@ -103,7 +103,8 @@ function normalizeSpecialSponsors(sponsors) {
       id: String(item.id ?? `special-${index + 1}`),
       name: String(item.name ?? "Special Sponsor"),
       profileUrl: item.profileUrl ? String(item.profileUrl) : null,
-      logo: item.logo ? String(item.logo) : null
+      logo: item.logo ? String(item.logo) : null,
+      expiresAt: normalizeExpiresAt(item.expiresAt ?? item.expiredAt ?? item.expiredTime ?? null)
     }));
 }
 
@@ -117,4 +118,11 @@ function normalizeSources(sources) {
 
 function cloneDefaultConfig() {
   return JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+}
+
+function normalizeExpiresAt(input) {
+  if (input == null || input === "") {
+    return null;
+  }
+  return String(input);
 }
