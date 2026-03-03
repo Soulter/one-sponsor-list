@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 import fs from "node:fs/promises";
 import path from "node:path";
+import { loadTierConfig } from "./config/tier-config.js";
 import { collectSponsors } from "./core/aggregator.js";
+import { embedSponsorAvatars } from "./core/sponsor-images.js";
+import { buildTierSections } from "./core/tiers.js";
 import { loadDotEnv } from "./env.js";
-import { renderSponsorSvg } from "./render/svg.js";
+import { renderSponsorTierSvg } from "./render/svg.js";
 import { listSupportedProviders } from "./providers/index.js";
 
 async function main() {
@@ -14,7 +17,8 @@ async function main() {
   }
 
   await loadDotEnv(args.envFile ?? ".env");
-  const config = buildConfigFromEnv(args);
+  const tierConfig = await loadTierConfig(args.config ?? "sponsors.config.json");
+  const config = buildConfigFromEnv(args, tierConfig.config);
 
   const stdoutEnabled = Boolean(args.stdout);
   const stdoutFormat = normalizeStdoutFormat(args.stdoutFormat);
@@ -40,7 +44,15 @@ async function main() {
     process.stdout.write(`${JSON.stringify(sponsors, null, 2)}\n`);
   }
 
-  const svg = renderSponsorSvg(sponsors, config.svg);
+  const sponsorsWithDataUri = await embedSponsorAvatars(sponsors);
+  const tiers = await buildTierSections(
+    {
+      tiers: config.tiers,
+      sponsors: sponsorsWithDataUri
+    },
+    { configDir: path.dirname(tierConfig.path) }
+  );
+  const svg = renderSponsorTierSvg(tiers, config.svg);
   const outputPath = path.resolve(config.output);
   await fs.mkdir(path.dirname(outputPath), { recursive: true });
   await fs.writeFile(outputPath, svg, "utf8");
@@ -90,6 +102,7 @@ function printHelp() {
       "",
       "Options:",
       "  --env-file <path>     Load env file (default: .env)",
+      "  --config <path>       Tier config JSON (default: sponsors.config.json)",
       "  --output <path>       Override output SVG path",
       "  --sort-by <amount|time>",
       "  --sort-order <asc|desc>",
@@ -115,7 +128,7 @@ function normalizeStdoutFormat(value) {
   throw new Error(`Invalid --stdout-format: ${value}. Use jsonl or json.`);
 }
 
-function buildConfigFromEnv(args) {
+function buildConfigFromEnv(args, tierConfig) {
   const userId = required("AFDIAN_USER_ID");
   const token = required("AFDIAN_TOKEN");
   const sortBy = pick(args.sortBy ?? process.env.SORT_BY, ["amount", "time"], "amount");
@@ -154,9 +167,11 @@ function buildConfigFromEnv(args) {
       padding: parseNumber(process.env.SVG_PADDING, 20, 0, 512),
       columns: parseNumber(process.env.SVG_COLUMNS, 10, 1, 200),
       background: process.env.SVG_BACKGROUND ?? "#f7fafc",
-      radius: process.env.SVG_RADIUS ?? "50%"
+      radius: process.env.SVG_RADIUS ?? "50%",
+      ...(tierConfig.svg ?? {})
     },
-    providers
+    providers,
+    tiers: tierConfig.tiers ?? []
   };
 }
 

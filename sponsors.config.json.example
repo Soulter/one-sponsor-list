@@ -1,0 +1,21 @@
+{
+  "tiers": [
+    {
+      "id": "special",
+      "type": "special",
+      "title": "Special Sponsor",
+      "sponsors": []
+    },
+    {
+      "id": "all",
+      "type": "all",
+      "title": "All Sponsor",
+      "sources": ["afdian", "opencollective"]
+    }
+  ],
+  "svg": {
+    "titleSize": 22,
+    "specialLogoSize": 84,
+    "specialTextSize": 24
+  }
+}

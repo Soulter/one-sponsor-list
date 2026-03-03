@@ -1,4 +1,5 @@
 import { sortSponsors } from "../src/core/sorter.js";
+import { embedSponsorAvatars } from "../src/core/sponsor-images.js";
 import { renderSponsorSvg } from "../src/render/svg.js";
 import { md5 } from "../src/edge/md5.js";
 
@@ -45,8 +46,10 @@ export async function onRequestGet(context) {
     }
     const sorted = sortSponsors(sponsors, { by: sortBy, order: sortOrder });
     const limited = sorted.slice(0, limit);
+    const embedded = await embedSponsorAvatars(limited, { fetchImpl: fetch });
+    const renderedCount = embedded.filter((sponsor) => Boolean(sponsor.avatarDataUri)).length;
 
-    const svg = renderSponsorSvg(limited, {
+    const svg = renderSponsorSvg(embedded, {
       avatarSize: parseNumber(url.searchParams.get("avatarSize"), 60, 16, 256),
       gap: parseNumber(url.searchParams.get("gap"), 10, 0, 64),
       padding: parseNumber(url.searchParams.get("padding"), 20, 0, 200),
@@ -60,7 +63,7 @@ export async function onRequestGet(context) {
       headers: {
         "content-type": "image/svg+xml; charset=utf-8",
         "cache-control": `public, max-age=${CACHE_SECONDS}, s-maxage=${CACHE_SECONDS}, stale-while-revalidate=300`,
-        "x-sponsors-count": String(limited.length),
+        "x-sponsors-count": String(renderedCount),
         "x-cache-ttl": String(CACHE_SECONDS)
       }
     });

@@ -11,6 +11,8 @@ Supported sources:
 - Sort by amount or time
 - Generate pure SVG output for README/web/docs usage
 - Deduplicate sponsors by profile URL or avatar URL
+- Embed all avatars/logos as base64 data URIs (CSP-friendly: `img-src data:`)
+- Tier rendering via config file (`special` + `all`)
 
 ## Requirements
 
@@ -25,6 +27,8 @@ node src/cli.js
 ```
 
 Default output path: `dist/sponsors.svg`.
+
+Default tier config: [sponsors.config.json](/Users/soulter/Developer/opensponsor/sponsors.config.json)
 
 ## Environment Variables
 
@@ -51,6 +55,42 @@ Optional:
 - `SVG_BACKGROUND` (default `#f7fafc`)
 - `SVG_RADIUS` (default `50%`)
 
+## Tier Config (`sponsors.config.json`)
+
+```json
+{
+  "tiers": [
+    {
+      "id": "special",
+      "type": "special",
+      "title": "Special Sponsor",
+      "sponsors": [
+        {
+          "name": "Your Company",
+          "profileUrl": "https://example.com",
+          "logo": "./assets/your-logo.png"
+        }
+      ]
+    },
+    {
+      "id": "all",
+      "type": "all",
+      "title": "All Sponsor",
+      "sources": ["afdian", "opencollective"]
+    }
+  ]
+}
+```
+
+Notes:
+- `special.sponsors[].logo` supports local file path / remote URL / data URI
+- `special` tier renders centered logo (no sponsor name text)
+- `special` logos are laid out horizontally and auto-wrap by canvas width
+- `all` tier merges Afdian + OpenCollective and renders avatar grid
+- You can tune tier sizes with `svg.specialTitleSize`, `svg.allTitleSize`, `svg.specialLogoWidth`, `svg.allAvatarSize`
+- `special` logo is always rendered with a fixed `200:75` ratio (height auto-derived from width)
+- Final `<image href="...">` values are base64 data URIs
+
 ## Cloudflare Pages Dynamic SVG (30-Min Cache)
 
 Built-in Pages Function route: `/sponsors.svg`  
@@ -76,6 +116,7 @@ Cache policy:
 ```bash
 node src/cli.js \
   --env-file .env \
+  --config sponsors.config.json \
   --output dist/sponsors.svg \
   --sort-by amount \
   --sort-order desc \
