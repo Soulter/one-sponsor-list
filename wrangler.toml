@@ -1,9 +1,0 @@
-name = "one-sponsor-list"
-main = "worker.js"
-compatibility_date = "2026-02-24"
-workers_dev = false
-account_id = "6ad5d542ffffb012354b009cbfe88a10"
-
-routes = [
-  { pattern = "sponsors.astrbot.app", custom_domain = true }
-]
