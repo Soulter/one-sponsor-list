@@ -3,3 +3,4 @@ dist
 .env
 sponsors.config.json
 assets
+.DS_Store
