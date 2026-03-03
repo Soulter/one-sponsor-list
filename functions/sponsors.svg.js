@@ -1,6 +1,7 @@
 import { sortSponsors } from "../src/core/sorter.js";
 import { embedSponsorAvatars } from "../src/core/sponsor-images.js";
-import { renderSponsorSvg } from "../src/render/svg.js";
+import { fetchImageAsDataUri, isDataUri, isHttpUrl } from "../src/core/images.js";
+import { renderSponsorSvg, renderSponsorTierSvg } from "../src/render/svg.js";
 import { md5 } from "../src/edge/md5.js";
 
 const CACHE_SECONDS = 60 * 30;
@@ -48,15 +49,17 @@ export async function onRequestGet(context) {
     const limited = sorted.slice(0, limit);
     const embedded = await embedSponsorAvatars(limited, { fetchImpl: fetch });
     const renderedCount = embedded.filter((sponsor) => Boolean(sponsor.avatarDataUri)).length;
+    const workerTierConfig = parseWorkerTierConfig(context.env);
+    const useTier = parseBoolean(url.searchParams.get("useTier"), workerTierConfig.enabled);
+    const svgOptions = buildSvgOptions(url, workerTierConfig.config.svg ?? {});
 
-    const svg = renderSponsorSvg(embedded, {
-      avatarSize: parseNumber(url.searchParams.get("avatarSize"), 60, 16, 256),
-      gap: parseNumber(url.searchParams.get("gap"), 10, 0, 64),
-      padding: parseNumber(url.searchParams.get("padding"), 20, 0, 200),
-      columns: parseNumber(url.searchParams.get("columns"), 10, 1, 100),
-      background: url.searchParams.get("background") ?? "#f7fafc",
-      radius: url.searchParams.get("radius") ?? "50%"
-    });
+    let svg;
+    if (useTier) {
+      const tierSections = await buildWorkerTierSections(workerTierConfig.config, embedded);
+      svg = renderSponsorTierSvg(tierSections, svgOptions);
+    } else {
+      svg = renderSponsorSvg(embedded, svgOptions);
+    }
 
     const response = new Response(svg, {
       status: 200,
@@ -228,4 +231,256 @@ function normalizeTimestamp(input) {
   }
   const parsed = Date.parse(String(input));
   return Number.isNaN(parsed) ? null : new Date(parsed).toISOString();
+}
+
+function buildSvgOptions(url, baseSvgConfig = {}) {
+  return {
+    ...baseSvgConfig,
+    avatarSize: parseNumber(url.searchParams.get("avatarSize"), Number(baseSvgConfig.avatarSize ?? 60), 16, 512),
+    allAvatarSize: parseNumber(
+      url.searchParams.get("allAvatarSize"),
+      Number(baseSvgConfig.allAvatarSize ?? baseSvgConfig.avatarSize ?? 60),
+      16,
+      512
+    ),
+    specialLogoWidth: parseNumber(
+      url.searchParams.get("specialLogoWidth"),
+      Number(baseSvgConfig.specialLogoWidth ?? baseSvgConfig.specialLogoSize ?? 200),
+      16,
+      1024
+    ),
+    gap: parseNumber(url.searchParams.get("gap"), Number(baseSvgConfig.gap ?? 10), 0, 128),
+    padding: parseNumber(url.searchParams.get("padding"), Number(baseSvgConfig.padding ?? 20), 0, 512),
+    columns: parseNumber(url.searchParams.get("columns"), Number(baseSvgConfig.columns ?? 10), 1, 100),
+    width: parseNumber(url.searchParams.get("width"), Number(baseSvgConfig.width ?? 800), 100, 4096),
+    titleSize: parseNumber(url.searchParams.get("titleSize"), Number(baseSvgConfig.titleSize ?? 22), 8, 256),
+    specialTitleSize: parseNumber(
+      url.searchParams.get("specialTitleSize"),
+      Number(baseSvgConfig.specialTitleSize ?? baseSvgConfig.titleSize ?? 22),
+      8,
+      256
+    ),
+    allTitleSize: parseNumber(
+      url.searchParams.get("allTitleSize"),
+      Number(baseSvgConfig.allTitleSize ?? baseSvgConfig.titleSize ?? 22),
+      8,
+      256
+    ),
+    sectionGap: parseNumber(url.searchParams.get("sectionGap"), Number(baseSvgConfig.sectionGap ?? 24), 0, 512),
+    titleGap: parseNumber(url.searchParams.get("titleGap"), Number(baseSvgConfig.titleGap ?? 10), 0, 512),
+    specialTitleGap: parseNumber(
+      url.searchParams.get("specialTitleGap"),
+      Number(baseSvgConfig.specialTitleGap ?? baseSvgConfig.titleGap ?? 4),
+      0,
+      512
+    ),
+    allTitleGap: parseNumber(
+      url.searchParams.get("allTitleGap"),
+      Number(baseSvgConfig.allTitleGap ?? baseSvgConfig.titleGap ?? 10),
+      0,
+      512
+    ),
+    specialLogoGap: parseNumber(
+      url.searchParams.get("specialLogoGap"),
+      Number(baseSvgConfig.specialLogoGap ?? 16),
+      0,
+      256
+    ),
+    background: url.searchParams.get("background") ?? baseSvgConfig.background ?? "#f7fafc",
+    titleColor: url.searchParams.get("titleColor") ?? baseSvgConfig.titleColor ?? "#777777",
+    radius: url.searchParams.get("radius") ?? baseSvgConfig.radius ?? "50%"
+  };
+}
+
+function parseWorkerTierConfig(env) {
+  const raw = env.SPONSORS_CONFIG_JSON;
+  if (!raw) {
+    return {
+      enabled: false,
+      config: defaultWorkerTierConfig()
+    };
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(String(raw));
+  } catch (error) {
+    throw new Error(`Invalid SPONSORS_CONFIG_JSON: ${String(error.message ?? error)}`);
+  }
+  return {
+    enabled: true,
+    config: normalizeWorkerTierConfig(parsed)
+  };
+}
+
+function normalizeWorkerTierConfig(input) {
+  const output = defaultWorkerTierConfig();
+  if (!input || typeof input !== "object") {
+    return output;
+  }
+  if (input.svg && typeof input.svg === "object") {
+    output.svg = { ...input.svg };
+  }
+  if (!Array.isArray(input.tiers) || input.tiers.length === 0) {
+    return output;
+  }
+  output.tiers = input.tiers
+    .map((tier, index) => normalizeWorkerTier(tier, index))
+    .filter(Boolean);
+  if (output.tiers.length === 0) {
+    output.tiers = defaultWorkerTierConfig().tiers;
+  }
+  return output;
+}
+
+function normalizeWorkerTier(tier, index) {
+  if (!tier || typeof tier !== "object") {
+    return null;
+  }
+  const type = String(tier.type ?? "").trim().toLowerCase();
+  if (type !== "special" && type !== "all") {
+    return null;
+  }
+  const id = String(tier.id ?? `${type}-${index + 1}`);
+  const title = String(tier.title ?? (type === "special" ? "Special Sponsors" : "All Sponsors"));
+  if (type === "special") {
+    return {
+      id,
+      type,
+      title,
+      sponsors: normalizeWorkerSpecialSponsors(tier.sponsors)
+    };
+  }
+  return {
+    id,
+    type,
+    title,
+    sources: normalizeWorkerSources(tier.sources)
+  };
+}
+
+function normalizeWorkerSpecialSponsors(sponsors) {
+  if (!Array.isArray(sponsors)) {
+    return [];
+  }
+  return sponsors
+    .filter((item) => item && typeof item === "object")
+    .map((item, index) => ({
+      id: String(item.id ?? `special-${index + 1}`),
+      name: String(item.name ?? "Special Sponsor"),
+      profileUrl: item.profileUrl ? String(item.profileUrl) : null,
+      logo: item.logo ? String(item.logo) : null,
+      expiresAt: normalizeWorkerExpiresAt(item.expiresAt ?? item.expiredAt ?? item.expiredTime ?? null)
+    }));
+}
+
+function normalizeWorkerExpiresAt(input) {
+  if (input == null || input === "") {
+    return null;
+  }
+  return String(input);
+}
+
+function normalizeWorkerSources(sources) {
+  if (!Array.isArray(sources) || sources.length === 0) {
+    return ["afdian", "opencollective"];
+  }
+  const list = sources.map((item) => String(item).trim().toLowerCase()).filter(Boolean);
+  return list.length > 0 ? Array.from(new Set(list)) : ["afdian", "opencollective"];
+}
+
+async function buildWorkerTierSections(config, sponsors) {
+  const now = Date.now();
+  const output = [];
+
+  for (const tier of config.tiers ?? []) {
+    if (tier.type === "special") {
+      const activeSpecials = [];
+      for (const sponsor of tier.sponsors ?? []) {
+        if (isExpiredSpecial(sponsor, now)) {
+          continue;
+        }
+        const logoDataUri = await resolveWorkerSpecialLogo(sponsor.logo);
+        if (!logoDataUri) {
+          continue;
+        }
+        activeSpecials.push({
+          ...sponsor,
+          logoDataUri
+        });
+      }
+      output.push({
+        id: tier.id,
+        type: "special",
+        title: tier.title,
+        sponsors: activeSpecials
+      });
+      continue;
+    }
+
+    if (tier.type === "all") {
+      const sourceSet = new Set((tier.sources ?? []).map((item) => String(item).toLowerCase()));
+      const list =
+        sourceSet.size === 0
+          ? sponsors
+          : sponsors.filter((sponsor) => sourceSet.has(String(sponsor.source ?? "").toLowerCase()));
+      output.push({
+        id: tier.id,
+        type: "all",
+        title: tier.title,
+        sponsors: list
+      });
+    }
+  }
+
+  return output;
+}
+
+async function resolveWorkerSpecialLogo(logo) {
+  if (!logo) {
+    return null;
+  }
+  const value = String(logo);
+  if (isDataUri(value)) {
+    return value;
+  }
+  if (isHttpUrl(value)) {
+    try {
+      return await fetchImageAsDataUri(value, { fetchImpl: fetch });
+    } catch (error) {
+      return null;
+    }
+  }
+  return null;
+}
+
+function isExpiredSpecial(sponsor, nowMs) {
+  const raw = sponsor?.expiresAt;
+  if (!raw) {
+    return false;
+  }
+  const parsed = Date.parse(String(raw));
+  if (Number.isNaN(parsed)) {
+    return false;
+  }
+  return parsed <= nowMs;
+}
+
+function defaultWorkerTierConfig() {
+  return {
+    tiers: [
+      {
+        id: "special",
+        type: "special",
+        title: "Special Sponsors",
+        sponsors: []
+      },
+      {
+        id: "all",
+        type: "all",
+        title: "All Sponsors",
+        sources: ["afdian", "opencollective"]
+      }
+    ],
+    svg: {}
+  };
 }

@@ -102,6 +102,11 @@ Set environment variables in Cloudflare Pages:
 - `AFDIAN_USER_ID`
 - `AFDIAN_TOKEN`
 - `OPENCOLLECTIVE_SLUGS` (optional)
+- `SPONSORS_CONFIG_JSON` (optional, JSON string for tier config)
+
+Workers note:
+- `SPONSORS_CONFIG_JSON` enables the same `special` / `all` tier rendering on the edge route.
+- In Workers runtime, `special.sponsors[].logo` supports URL or data URI (local file path is not available).
 
 Example request:
 
