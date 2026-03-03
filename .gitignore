@@ -4,3 +4,5 @@ dist
 sponsors.config.json
 assets
 .DS_Store
+wrangler.toml
+.wrangler

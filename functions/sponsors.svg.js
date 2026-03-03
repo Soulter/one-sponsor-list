@@ -1,6 +1,12 @@
 import { sortSponsors } from "../src/core/sorter.js";
 import { embedSponsorAvatars } from "../src/core/sponsor-images.js";
-import { fetchImageAsDataUri, isDataUri, isHttpUrl } from "../src/core/images.js";
+import {
+  bytesToDataUri,
+  fetchImageAsDataUri,
+  guessMimeFromPath,
+  isDataUri,
+  isHttpUrl
+} from "../src/core/images.js";
 import { renderSponsorSvg, renderSponsorTierSvg } from "../src/render/svg.js";
 import { md5 } from "../src/edge/md5.js";
 
@@ -55,7 +61,7 @@ export async function onRequestGet(context) {
 
     let svg;
     if (useTier) {
-      const tierSections = await buildWorkerTierSections(workerTierConfig.config, embedded);
+      const tierSections = await buildWorkerTierSections(workerTierConfig.config, embedded, context.env);
       svg = renderSponsorTierSvg(tierSections, svgOptions);
     } else {
       svg = renderSponsorSvg(embedded, svgOptions);
@@ -388,8 +394,9 @@ function normalizeWorkerSources(sources) {
   return list.length > 0 ? Array.from(new Set(list)) : ["afdian", "opencollective"];
 }
 
-async function buildWorkerTierSections(config, sponsors) {
+async function buildWorkerTierSections(config, sponsors, env) {
   const now = Date.now();
+  const logoCache = new Map();
   const output = [];
 
   for (const tier of config.tiers ?? []) {
@@ -399,7 +406,7 @@ async function buildWorkerTierSections(config, sponsors) {
         if (isExpiredSpecial(sponsor, now)) {
           continue;
         }
-        const logoDataUri = await resolveWorkerSpecialLogo(sponsor.logo);
+        const logoDataUri = await resolveWorkerSpecialLogo(sponsor.logo, env, logoCache);
         if (!logoDataUri) {
           continue;
         }
@@ -435,22 +442,98 @@ async function buildWorkerTierSections(config, sponsors) {
   return output;
 }
 
-async function resolveWorkerSpecialLogo(logo) {
+async function resolveWorkerSpecialLogo(logo, env, cache) {
   if (!logo) {
     return null;
   }
   const value = String(logo);
+  if (cache.has(value)) {
+    return cache.get(value);
+  }
   if (isDataUri(value)) {
+    cache.set(value, value);
     return value;
+  }
+  const kvResult = await resolveWorkerSpecialLogoFromKv(value, env);
+  if (kvResult) {
+    cache.set(value, kvResult);
+    return kvResult;
   }
   if (isHttpUrl(value)) {
     try {
-      return await fetchImageAsDataUri(value, { fetchImpl: fetch });
+      const dataUri = await fetchImageAsDataUri(value, { fetchImpl: fetch });
+      cache.set(value, dataUri);
+      return dataUri;
     } catch (error) {
       return null;
     }
   }
   return null;
+}
+
+async function resolveWorkerSpecialLogoFromKv(logoValue, env) {
+  const kvRef = parseKvLogoRef(logoValue);
+  if (!kvRef) {
+    return null;
+  }
+  const bindingName = env.SPECIAL_LOGO_KV_BINDING || "SPONSOR_ASSETS";
+  const kv = env[bindingName];
+  if (!kv || typeof kv.get !== "function") {
+    return null;
+  }
+  const text = await kv.get(kvRef.key);
+  if (typeof text === "string" && text) {
+    if (isDataUri(text)) {
+      return text;
+    }
+    const base64Candidate = text.trim();
+    if (/^[A-Za-z0-9+/=\r\n]+$/.test(base64Candidate)) {
+      const normalized = base64Candidate.replace(/\s+/g, "");
+      if (normalized.length > 0) {
+        const mime = kvRef.mime || guessMimeFromPath(kvRef.key) || "application/octet-stream";
+        return `data:${mime};base64,${normalized}`;
+      }
+    }
+  }
+
+  const arrayBuffer = await kv.get(kvRef.key, "arrayBuffer");
+  if (!arrayBuffer) {
+    return null;
+  }
+  const mime = kvRef.mime || guessMimeFromPath(kvRef.key) || "application/octet-stream";
+  return bytesToDataUri(new Uint8Array(arrayBuffer), mime);
+}
+
+function parseKvLogoRef(input) {
+  const raw = String(input).trim();
+  if (!raw.toLowerCase().startsWith("kv:")) {
+    return null;
+  }
+  let rest = raw.slice(3).trim();
+  if (rest.startsWith("//")) {
+    rest = rest.slice(2);
+  }
+  if (!rest) {
+    return null;
+  }
+
+  const [keyPart, queryPart] = rest.split("?", 2);
+  const key = keyPart.trim();
+  if (!key) {
+    return null;
+  }
+  let mime = null;
+  if (queryPart) {
+    const params = new URLSearchParams(queryPart);
+    const mimeParam = params.get("mime");
+    if (mimeParam) {
+      mime = String(mimeParam).trim().toLowerCase();
+    }
+  }
+  return {
+    key,
+    mime
+  };
 }
 
 function isExpiredSpecial(sponsor, nowMs) {

@@ -103,10 +103,36 @@ Set environment variables in Cloudflare Pages:
 - `AFDIAN_TOKEN`
 - `OPENCOLLECTIVE_SLUGS` (optional)
 - `SPONSORS_CONFIG_JSON` (optional, JSON string for tier config)
+- `SPECIAL_LOGO_KV_BINDING` (optional, default `SPONSOR_ASSETS`)
 
 Workers note:
 - `SPONSORS_CONFIG_JSON` enables the same `special` / `all` tier rendering on the edge route.
-- In Workers runtime, `special.sponsors[].logo` supports URL or data URI (local file path is not available).
+- In Workers runtime, `special.sponsors[].logo` supports URL / data URI / KV reference.
+- KV reference format: `kv:logo-key` or `kv://logo-key?mime=image/png`.
+- Default KV binding name is `SPONSOR_ASSETS` (override by `SPECIAL_LOGO_KV_BINDING`).
+
+Example KV upload:
+
+```bash
+npx wrangler kv key put --binding SPONSOR_ASSETS special/xxx.png --path ./assets/special/xxx.png
+```
+
+Example `SPONSORS_CONFIG_JSON` snippet:
+
+```json
+{
+  "tiers": [
+    {
+      "type": "special",
+      "title": "Special Sponsors",
+      "sponsors": [
+        { "name": "SAI", "logo": "kv:special/xxx.png" }
+      ]
+    },
+    { "type": "all", "title": "All Sponsors", "sources": ["afdian", "opencollective"] }
+  ]
+}
+```
 
 Example request:
 
