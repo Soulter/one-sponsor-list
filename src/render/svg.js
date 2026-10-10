@@ -1,5 +1,6 @@
 const DEFAULT_OPTIONS = {
   avatarSize: 56,
+  showNames: false,
   gap: 8,
   padding: 12,
   columns: 10,
@@ -11,7 +12,7 @@ const DEFAULT_OPTIONS = {
   specialTitleSize: 22,
   allTitleSize: 22,
   titleGap: 10,
-  specialTitleGap: 4,
+  specialTitleGap: 16,
   allTitleGap: 10,
   titleColor: "#777777",
   fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif",
@@ -22,20 +23,12 @@ const DEFAULT_OPTIONS = {
 export function renderSponsorSvg(sponsors, options = {}) {
   const opt = { ...DEFAULT_OPTIONS, ...options };
   const width = resolveCanvasWidth([], opt);
-  const columns = Math.max(1, Number(opt.columns));
-  const rows = Math.max(1, Math.ceil(Math.max(sponsors.length, 1) / columns));
-  const height = opt.padding * 2 + rows * opt.avatarSize + (rows - 1) * opt.gap;
-  const radius = resolveRadius(opt.radius, opt.avatarSize);
-
-  const items = sponsors.map((sponsor, index) => {
-    const col = index % columns;
-    const row = Math.floor(index / columns);
-    const gridWidth = columns * opt.avatarSize + (columns - 1) * opt.gap;
-    const startX = (width - gridWidth) / 2;
-    const x = startX + col * (opt.avatarSize + opt.gap);
-    const y = opt.padding + row * (opt.avatarSize + opt.gap);
-    return renderAvatarNode(sponsor, x, y, opt.avatarSize, radius, index, "plain");
+  const grid = renderAvatarGrid(sponsors, {
+    startY: opt.padding, width, options: opt, avatarSize: opt.avatarSize,
+    baseIndex: 0, idPrefix: "plain"
   });
+  const height = opt.padding * 2 + Math.max(grid.height, opt.avatarSize);
+  const items = grid.nodes;
 
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img">`,
@@ -111,16 +104,19 @@ function renderAvatarGrid(sponsors, input) {
       height: 0
     };
   }
-  const columns = Math.max(1, Number(options.columns));
+  const cellWidth = options.showNames ? Math.max(96, avatarSize) : avatarSize;
+  const cellHeight = avatarSize + (options.showNames ? 28 : 0);
+  const columns = Math.min(Math.max(1, Number(options.columns)),
+    Math.max(1, Math.floor((input.width - options.padding * 2 + options.gap) / (cellWidth + options.gap))));
   const totalRows = Math.ceil(sponsors.length / columns);
   const nodes = sponsors.map((sponsor, index) => {
     const col = index % columns;
     const row = Math.floor(index / columns);
     const rowCount = Math.min(columns, sponsors.length - row * columns);
-    const rowWidth = rowCount * avatarSize + (rowCount - 1) * options.gap;
+    const rowWidth = rowCount * cellWidth + (rowCount - 1) * options.gap;
     const rowStartX = (input.width - rowWidth) / 2;
-    const x = rowStartX + col * (avatarSize + options.gap);
-    const y = input.startY + row * (avatarSize + options.gap);
+    const x = rowStartX + col * (cellWidth + options.gap) + (cellWidth - avatarSize) / 2;
+    const y = input.startY + row * (cellHeight + options.gap);
     return renderAvatarNode(
       sponsor,
       x,
@@ -128,13 +124,14 @@ function renderAvatarGrid(sponsors, input) {
       avatarSize,
       radius,
       input.baseIndex + index,
-      input.idPrefix ?? "tier"
+      input.idPrefix ?? "tier",
+      { ...options, nameWidth: cellWidth }
     );
   });
 
   return {
     nodes,
-    height: totalRows * avatarSize + (totalRows - 1) * options.gap
+    height: totalRows * cellHeight + (totalRows - 1) * options.gap
   };
 }
 
@@ -171,7 +168,7 @@ function renderSpecialTierItems(sponsors, input) {
     const rowStartX = (input.width - rowWidth) / 2;
     const logoX = rowStartX + col * (logoWidth + logoGap);
     const logoY = input.startY + row * (logoHeight + logoGap);
-    const imageNode = `<image x="${logoX}" y="${logoY}" width="${logoWidth}" height="${logoHeight}" href="${escapeXml(sponsor.logoDataUri)}" preserveAspectRatio="xMidYMid meet"/>`;
+    const imageNode = `<title>${escapeXml(sponsor.name ?? "")}</title><image x="${logoX}" y="${logoY}" width="${logoWidth}" height="${logoHeight}" href="${escapeXml(sponsor.logoDataUri)}" preserveAspectRatio="xMidYMid meet"/>`;
     if (sponsor.profileUrl) {
       nodes.push(
         `<a href="${escapeXml(sponsor.profileUrl)}" target="_blank" rel="noopener noreferrer">${imageNode}</a>`
@@ -187,21 +184,46 @@ function renderSpecialTierItems(sponsors, input) {
   };
 }
 
-function renderAvatarNode(sponsor, x, y, size, radius, index, idPrefix) {
+function renderAvatarNode(sponsor, x, y, size, radius, index, idPrefix, options) {
+  if (sponsor.isMore) {
+    const centerX = x + size / 2, centerY = y + size / 2;
+    const dots = [-1,0,1].map(offset => `<circle cx="${centerX + offset * size * 0.16}" cy="${centerY}" r="${size * 0.045}" fill="#64748b"/>`).join('');
+    return `<a href="${escapeXml(sponsor.profileUrl)}" aria-label="${escapeXml(sponsor.name)}" target="_blank" rel="noopener noreferrer"><title>${escapeXml(sponsor.name)}</title><circle cx="${centerX}" cy="${centerY}" r="${size / 2 - 1}" fill="#e9eef3" stroke="#cbd5e1"/>${dots}</a>`;
+  }
   const clipId = `clip-${sanitizeId(idPrefix)}-${index}`;
   const imageHref = sponsor.avatarDataUri ?? sponsor.avatarUrl;
   if (!imageHref) {
     return "";
   }
-  const image = [
+  let image = [
     `<defs><clipPath id="${clipId}"><rect x="${x}" y="${y}" width="${size}" height="${size}" rx="${radius}" ry="${radius}"/></clipPath></defs>`,
     `<image x="${x}" y="${y}" width="${size}" height="${size}" href="${escapeXml(imageHref)}" clip-path="url(#${clipId})" preserveAspectRatio="xMidYMid slice"/>`
   ].join("");
 
-  if (sponsor.profileUrl) {
-    return `<a href="${escapeXml(sponsor.profileUrl)}" target="_blank" rel="noopener noreferrer">${image}</a>`;
+  const name = String(sponsor.name ?? '');
+  image = `<title>${escapeXml(name)}</title>` + image;
+  if (options.showNames && name) {
+    const label = truncateSponsorName(name, options.nameWidth - 8);
+    image += `<text x="${x + size / 2}" y="${y + size + 20}" text-anchor="middle" font-size="12" font-family="${escapeXml(options.fontFamily)}" fill="${escapeXml(options.titleColor)}">${escapeXml(label)}</text>`;
   }
-  return image;
+  if (sponsor.profileUrl) {
+    return `<a href="${escapeXml(sponsor.profileUrl)}" aria-label="${escapeXml(name)}" target="_blank" rel="noopener noreferrer">${image}</a>`;
+  }
+  return `<g role="img" aria-label="${escapeXml(name)}">${image}</g>`;
+}
+
+// Keep graphemes intact and add an ellipsis only when the single line overflows.
+function truncateSponsorName(name, width) {
+  const characters = Array.from(new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+    .segment(name.replace(/\s+/gu, ' ').trim()), item => item.segment);
+  const measure = char => /\s/u.test(char) ? 4 : /[MW@#%]/u.test(char) ? 11 : /[^\x00-\xff]/u.test(char) ? 12 : 7;
+  let length = 0, units = 0;
+  while (length < characters.length && units + measure(characters[length]) <= width) {
+    units += measure(characters[length++]);
+  }
+  if (length === characters.length) return characters.join('');
+  while (length > 0 && units + 12 > width) units -= measure(characters[--length]);
+  return characters.slice(0, length).join('').trimEnd() + '…';
 }
 
 function resolveRadius(raw, size) {

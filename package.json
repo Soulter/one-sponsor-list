@@ -10,5 +10,9 @@
   "engines": {
     "node": ">=18"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "@cf-wasm/photon": "0.4.0",
+    "image-size": "2.0.4"
+  }
 }

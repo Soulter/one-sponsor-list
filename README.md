@@ -171,3 +171,33 @@ Notes:
 ```bash
 node --test
 ```
+
+## Display profiles (AstrBot deployment)
+
+The Worker reads optional per-sponsor display overrides from `SPONSOR_ASSETS` KV
+using `sponsor-profile-v1:<source:id>`. Values contain optional `name`, `avatarUrl`,
+and `profileUrl`; blank fields use platform defaults. The shared validator and
+merge logic live in `src/core/profiles.js`. The Access-protected editor is served
+by the companion `astrbot-sponsors-catalog` Worker at `/webui/people`.
+
+Canonical requests (no query string) store original display fields in
+`sponsor-directory-v1` for the editor. Query-limited requests do not replace this
+snapshot. Sort amounts and identity fields never come from display overrides.
+
+Names are hidden by default in the Worker; `?showNames=true` enables labels.
+The default grid contains at most 50 slots: 49 sponsors plus a circular more link
+when the list exceeds 50. The link opens `https://astrbot.app/#/sponsors`. Direct renderer/CLI callers can opt in via `showNames: true` in SVG
+options. All modes include full-name SVG titles, and custom links include both
+avatar and visible name. Custom images fall back to platform images on failure.
+
+
+### Independent special sections
+
+The companion panel at `/webui/sections` publishes `sponsor-wall-sections-v1` to
+`SPONSOR_ASSETS`. This config contains separate Special Sponsors and Special
+Contributors sections, editable titles, `logos` or `avatars` layouts, and ordered
+entries with `id`, `name`, `logo`, and optional `profileUrl`. Empty sections hide.
+The managed sections replace legacy special tiers only after the first publication;
+until then `SPONSORS_CONFIG_JSON` still supplies legacy specials. Personal Afdian
+sponsors keep their existing sorting and display overrides. The original AI4S and
+SSYCloud logos/links are included as defaults by the administration Worker.

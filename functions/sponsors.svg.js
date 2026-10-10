@@ -1,3 +1,6 @@
+import { compactSponsors } from '../src/core/compact.js';
+import { SECTIONS_KEY, parseSections, renderSections } from '../src/core/sections.js';
+import { loadProfiles, directoryEntry, DIRECTORY_KEY } from '../src/core/profiles.js';
 import { sortSponsors } from "../src/core/sorter.js";
 import { embedSponsorAvatars } from "../src/core/sponsor-images.js";
 import {
@@ -16,7 +19,9 @@ const OPENCOLLECTIVE_BASE_URL = "https://opencollective.com";
 
 export async function onRequestGet(context) {
   const cache = caches.default;
-  const cacheKey = new Request(context.request.url, context.request);
+  const cacheUrl = new URL(context.request.url);
+  cacheUrl.searchParams.set('_wall_revision', 'compact-v4-thumbnails');
+  const cacheKey = new Request(cacheUrl, context.request);
   const cached = await cache.match(cacheKey);
   if (cached) {
     return cached;
@@ -28,7 +33,7 @@ export async function onRequestGet(context) {
     const token = requireEnv(context.env.AFDIAN_TOKEN, "AFDIAN_TOKEN");
     const perPage = parseNumber(url.searchParams.get("perPage"), 100, 1, 100);
     const maxPages = parseNumber(url.searchParams.get("maxPages"), 30, 1, 100);
-    const limit = parseNumber(url.searchParams.get("limit"), 120, 1, 2000);
+    const limit = parseNumber(url.searchParams.get("limit"), 50, 1, 50);
     const sortBy = pick(url.searchParams.get("sortBy"), ["amount", "time"], "amount");
     const sortOrder = pick(url.searchParams.get("sortOrder"), ["asc", "desc"], "desc");
     const ocSlugs = parseCsv(url.searchParams.get("ocSlugs") ?? context.env.OPENCOLLECTIVE_SLUGS);
@@ -52,16 +57,40 @@ export async function onRequestGet(context) {
       }
     }
     const sorted = sortSponsors(sponsors, { by: sortBy, order: sortOrder });
-    const limited = sorted.slice(0, limit);
-    const embedded = await embedSponsorAvatars(limited, { fetchImpl: fetch });
+    // Only the canonical request updates the admin directory; query-limited renders
+    // must not replace it with a partial list. No payments or tokens are stored.
+    if (context.env.SPONSOR_ASSETS && !url.search) {
+      context.waitUntil(context.env.SPONSOR_ASSETS.put(DIRECTORY_KEY, JSON.stringify({
+        updated_at: new Date().toISOString(), sponsors: sorted.map(directoryEntry)
+      })).catch(() => {}));
+    }
+    const limited = await loadProfiles(compactSponsors(sorted, limit), context.env.SPONSOR_ASSETS);
+    const fetchSponsorImage = async (input, options) => {
+      const imageUrl = new URL(input);
+      if (context.env.SPONSOR_CATALOG && imageUrl.origin === 'https://sponsors.astrbot.app'
+          && imageUrl.pathname.startsWith('/section-logos/')) {
+        return context.env.SPONSOR_CATALOG.fetch(input, options);
+      }
+      return fetch(input, options);
+    };
+    const embedded = await embedSponsorAvatars(limited, {
+      fetchImpl: fetchSponsorImage,
+      transformImage: context.transformImage,
+      onThumbnailError: error => console.warn('Sponsor thumbnail fallback:', error.message)
+    });
     const renderedCount = embedded.filter((sponsor) => Boolean(sponsor.avatarDataUri)).length;
     const workerTierConfig = parseWorkerTierConfig(context.env);
-    const useTier = parseBoolean(url.searchParams.get("useTier"), workerTierConfig.enabled);
-    const svgOptions = buildSvgOptions(url, workerTierConfig.config.svg ?? {});
+    const managed = context.env.SPONSOR_ASSETS ? await context.env.SPONSOR_ASSETS.get(SECTIONS_KEY, 'json') : null;
+    const useTier = parseBoolean(url.searchParams.get("useTier"), workerTierConfig.enabled || Boolean(managed));
+    const svgOptions = buildSvgOptions(url, managed
+      ? { showNames: false, allAvatarSize: 40, gap: 10, padding: 24, width: 800, allTitleGap: 20 }
+      : workerTierConfig.config.svg ?? {});
 
     let svg;
     if (useTier) {
-      const tierSections = await buildWorkerTierSections(workerTierConfig.config, embedded, context.env);
+      const tierSections = managed
+        ? [...await renderSections(parseSections(managed), { fetchImpl: fetchSponsorImage, transformImage: context.transformImage }), { id: 'all', type: 'all', title: 'All Sponsors', sponsors: embedded }]
+        : await buildWorkerTierSections(workerTierConfig.config, embedded, context.env);
       svg = renderSponsorTierSvg(tierSections, svgOptions);
     } else {
       svg = renderSponsorSvg(embedded, svgOptions);
@@ -73,6 +102,7 @@ export async function onRequestGet(context) {
         "content-type": "image/svg+xml; charset=utf-8",
         "cache-control": `public, max-age=${CACHE_SECONDS}, s-maxage=${CACHE_SECONDS}, stale-while-revalidate=300`,
         "x-sponsors-count": String(renderedCount),
+        "x-sponsors-renderer": "compact-v4-thumbnails",
         "x-cache-ttl": String(CACHE_SECONDS)
       }
     });
@@ -242,6 +272,7 @@ function normalizeTimestamp(input) {
 function buildSvgOptions(url, baseSvgConfig = {}) {
   return {
     ...baseSvgConfig,
+    showNames: parseBoolean(url.searchParams.get("showNames"), baseSvgConfig.showNames ?? false),
     avatarSize: parseNumber(url.searchParams.get("avatarSize"), Number(baseSvgConfig.avatarSize ?? 60), 16, 512),
     allAvatarSize: parseNumber(
       url.searchParams.get("allAvatarSize"),
@@ -276,7 +307,7 @@ function buildSvgOptions(url, baseSvgConfig = {}) {
     titleGap: parseNumber(url.searchParams.get("titleGap"), Number(baseSvgConfig.titleGap ?? 10), 0, 512),
     specialTitleGap: parseNumber(
       url.searchParams.get("specialTitleGap"),
-      Number(baseSvgConfig.specialTitleGap ?? baseSvgConfig.titleGap ?? 4),
+      Number(baseSvgConfig.specialTitleGap ?? baseSvgConfig.titleGap ?? 16),
       0,
       512
     ),
@@ -429,7 +460,7 @@ async function buildWorkerTierSections(config, sponsors, env) {
       const list =
         sourceSet.size === 0
           ? sponsors
-          : sponsors.filter((sponsor) => sourceSet.has(String(sponsor.source ?? "").toLowerCase()));
+          : sponsors.filter((sponsor) => sponsor.isMore || sourceSet.has(String(sponsor.source ?? "").toLowerCase()));
       output.push({
         id: tier.id,
         type: "all",

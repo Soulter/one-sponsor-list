@@ -67,9 +67,10 @@ test("render tier svg without sponsor names", () => {
   assert.match(svg, /fill="#777777"/);
   assert.match(svg, /data:image\/png;base64,AAAA/);
   assert.match(svg, /data:image\/png;base64,BBBB/);
-  assert.match(svg, /<image x="380" y="167" width="40"/);
-  assert.doesNotMatch(svg, /ACME/);
-  assert.doesNotMatch(svg, /Alice/);
+  assert.match(svg, /<image x="380" y="179" width="40"/);
+  assert.match(svg, /<title>ACME<\/title>/);
+  assert.doesNotMatch(svg, /<text[^>]*>Alice<\/text>/);
+  assert.match(svg, /<title>Alice<\/title>/);
 });
 
 test("render special tier logos in horizontal layout", () => {
@@ -88,6 +89,6 @@ test("render special tier logos in horizontal layout", () => {
     { padding: 10 }
   );
 
-  assert.match(svg, /<image x="192" y="36" width="200" height="75"/);
-  assert.match(svg, /<image x="408" y="36" width="200" height="75"/);
+  assert.match(svg, /<image x="192" y="48" width="200" height="75"/);
+  assert.match(svg, /<image x="408" y="48" width="200" height="75"/);
 });

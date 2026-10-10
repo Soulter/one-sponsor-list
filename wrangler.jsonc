@@ -1,0 +1,13 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "one-sponsor-list",
+  "main": "worker.js",
+  "compatibility_date": "2026-02-24",
+  "account_id": "6ad5d542ffffb012354b009cbfe88a10",
+  "workers_dev": false,
+  "preview_urls": false,
+  "keep_vars": true,
+  "routes": [{ "pattern": "sponsors.astrbot.app", "custom_domain": true }],
+  "services": [{ "binding": "SPONSOR_CATALOG", "service": "astrbot-sponsors-catalog" }],
+  "kv_namespaces": [{ "binding": "SPONSOR_ASSETS", "id": "f19d1d449dbd41e8b6b512ae30761280" }]
+}

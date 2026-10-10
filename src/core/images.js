@@ -22,9 +22,32 @@ export async function fetchImageAsDataUri(url, options = {}) {
     throw new Error(`Image fetch failed: HTTP ${response.status} - ${url}`);
   }
   const contentType = normalizeContentType(response.headers.get("content-type"));
-  const buffer = await response.arrayBuffer();
+  if (options.requireImage && contentType && !Object.values(MIME_BY_EXT).includes(contentType)) {
+    throw new Error('Avatar response is not a supported image');
+  }
+  let buffer;
+  if (options.maxBytes && response.body) {
+    const reader = response.body.getReader(), chunks = [];
+    let size = 0;
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        size += value.length;
+        if (size > options.maxBytes) { await reader.cancel(); throw new Error('Avatar exceeds size limit'); }
+        chunks.push(value);
+      }
+    } finally { reader.releaseLock(); }
+    const bytes = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
+    buffer = bytes.buffer;
+  } else buffer = await response.arrayBuffer();
   const mime = contentType ?? guessMimeFromPath(url) ?? DEFAULT_MIME;
-  return bytesToDataUri(new Uint8Array(buffer), mime);
+  const image = options.transformImage
+    ? options.transformImage(new Uint8Array(buffer), mime)
+    : { bytes: new Uint8Array(buffer), mime };
+  return bytesToDataUri(image.bytes, image.mime);
 }
 
 export function bytesToDataUri(bytes, mime) {
