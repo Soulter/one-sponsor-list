@@ -14,19 +14,114 @@ import { renderSponsorSvg, renderSponsorTierSvg } from "../src/render/svg.js";
 import { md5 } from "../src/edge/md5.js";
 
 const CACHE_SECONDS = 60 * 30;
+const RENDERER = 'compact-v6-logo-spacing';
+export const SNAPSHOT_KEY = `sponsor-wall-svg-v1:${RENDERER}`;
+const refreshes = new Map();
 const AFDIAN_API_URL = "https://afdian.com/api/open/query-sponsor";
 const OPENCOLLECTIVE_BASE_URL = "https://opencollective.com";
 
 export async function onRequestGet(context) {
   const cache = caches.default;
-  const cacheUrl = new URL(context.request.url);
-  cacheUrl.searchParams.set('_wall_revision', 'compact-v6-logo-spacing');
-  const cacheKey = new Request(cacheUrl, context.request);
-  const cached = await cache.match(cacheKey);
+  const url = new URL(context.request.url);
+  const canonical = !url.search && ['/', '/sponsors.svg'].includes(url.pathname);
+  const cacheUrl = new URL(url);
+  cacheUrl.searchParams.set('_wall_revision', `persisted-v1-${RENDERER}`);
+  const cacheKey = new Request(cacheUrl, { method: 'GET' });
+  let cached;
+  try {
+    cached = await cache.match(cacheKey);
+  } catch (error) {
+    console.warn('Sponsor edge cache read failed:', error.message);
+  }
   if (cached) {
-    return cached;
+    const response = new Response(cached.body, cached);
+    response.headers.set('x-sponsors-cache', 'HIT');
+    return response;
   }
 
+  if (canonical && context.env.SPONSOR_ASSETS) {
+    let snapshot;
+    try {
+      snapshot = await context.env.SPONSOR_ASSETS.get(SNAPSHOT_KEY, 'json');
+    } catch (error) {
+      console.warn('Sponsor snapshot read failed:', error.message);
+    }
+    if (typeof snapshot?.svg === 'string' && snapshot.svg.startsWith('<svg')
+        && Number.isFinite(snapshot.generatedAt) && snapshot.generatedAt > 0
+        && snapshot.generatedAt <= Date.now() && Number.isInteger(snapshot.count) && snapshot.count >= 0) {
+      const stale = Date.now() - snapshot.generatedAt >= CACHE_SECONDS * 1000;
+      if (stale) {
+        context.waitUntil(refreshSnapshot(context).catch(error => {
+          console.warn('Sponsor snapshot refresh failed:', error.message);
+        }));
+      }
+      const response = snapshotResponse(snapshot, stale ? 'STALE' : 'KV-HIT');
+      context.waitUntil(cache.put(cacheKey, response.clone()).catch(error => {
+        console.warn('Sponsor edge cache write failed:', error.message);
+      }));
+      return response;
+    }
+    try {
+      const response = snapshotResponse(await refreshSnapshot(context), 'MISS');
+      context.waitUntil(cache.put(cacheKey, response.clone()).catch(error => {
+        console.warn('Sponsor edge cache write failed:', error.message);
+      }));
+      return response;
+    } catch (error) {
+      return new Response(error.message, { status: 500, headers: { 'cache-control': 'no-store' } });
+    }
+  }
+
+  const response = await generateSponsorSvg(context);
+  if (response.ok) {
+    response.headers.set('x-sponsors-cache', 'MISS');
+    context.waitUntil(cache.put(cacheKey, response.clone()).catch(error => {
+      console.warn('Sponsor edge cache write failed:', error.message);
+    }));
+  }
+  return response;
+}
+
+function snapshotResponse(snapshot, state) {
+  const age = Math.max(0, Math.floor((Date.now() - snapshot.generatedAt) / 1000));
+  const ttl = state === 'STALE' ? 60 : Math.max(1, CACHE_SECONDS - age);
+  return new Response(snapshot.svg, { headers: {
+    'content-type': 'image/svg+xml; charset=utf-8',
+    'cache-control': `public, max-age=${ttl}, s-maxage=${ttl}`,
+    'x-sponsors-count': String(snapshot.count),
+    'x-sponsors-renderer': RENDERER,
+    'x-cache-ttl': String(ttl),
+    'x-sponsors-cache': state,
+    'x-sponsors-generated-at': new Date(snapshot.generatedAt).toISOString()
+  } });
+}
+
+function refreshSnapshot(context) {
+  // Coalesce concurrent refreshes in this isolate, including an empty first cache.
+  const kv = context.env.SPONSOR_ASSETS;
+  if (!refreshes.has(kv)) {
+    const refresh = (async () => {
+      const response = await generateSponsorSvg(context);
+      if (!response.ok) throw new Error(`Sponsor generation failed: ${await response.text()}`);
+      const snapshot = {
+        svg: await response.text(),
+        count: Number(response.headers.get('x-sponsors-count')),
+        generatedAt: Date.now()
+      };
+      try {
+        // No expiration: failed upstream requests must leave the last good SVG available.
+        await kv.put(SNAPSHOT_KEY, JSON.stringify(snapshot));
+      } catch (error) {
+        console.warn('Sponsor snapshot write failed:', error.message);
+      }
+      return snapshot;
+    })().finally(() => refreshes.delete(kv));
+    refreshes.set(kv, refresh);
+  }
+  return refreshes.get(kv);
+}
+
+async function generateSponsorSvg(context) {
   try {
     const url = new URL(context.request.url);
     const userId = requireEnv(context.env.AFDIAN_USER_ID, "AFDIAN_USER_ID");
@@ -79,6 +174,9 @@ export async function onRequestGet(context) {
       onThumbnailError: error => console.warn('Sponsor thumbnail fallback:', error.message)
     });
     const renderedCount = embedded.filter((sponsor) => Boolean(sponsor.avatarDataUri)).length;
+    if (!renderedCount && limited.some(sponsor => !sponsor.isMore)) {
+      throw new Error('No sponsor avatars could be loaded');
+    }
     const workerTierConfig = parseWorkerTierConfig(context.env);
     const managed = context.env.SPONSOR_ASSETS ? await context.env.SPONSOR_ASSETS.get(SECTIONS_KEY, 'json') : null;
     const useTier = parseBoolean(url.searchParams.get("useTier"), workerTierConfig.enabled || Boolean(managed));
@@ -104,11 +202,10 @@ export async function onRequestGet(context) {
         "content-type": "image/svg+xml; charset=utf-8",
         "cache-control": `public, max-age=${CACHE_SECONDS}, s-maxage=${CACHE_SECONDS}, stale-while-revalidate=300`,
         "x-sponsors-count": String(renderedCount),
-        "x-sponsors-renderer": "compact-v6-logo-spacing",
+        "x-sponsors-renderer": RENDERER,
         "x-cache-ttl": String(CACHE_SECONDS)
       }
     });
-    context.waitUntil(cache.put(cacheKey, response.clone()));
     return response;
   } catch (error) {
     return new Response(String(error.message ?? error), {

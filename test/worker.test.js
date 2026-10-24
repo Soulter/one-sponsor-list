@@ -33,5 +33,5 @@ test('managed production wall matches compact preview despite legacy settings an
   assert.match(svg, /https:\/\/astrbot.app\/#\/sponsors/);
   assert.match(svg, /width="40" height="40"/);
   assert.equal(writes.get(DIRECTORY_KEY).sponsors.length, 83);
-  assert.match(cacheUrl, /_wall_revision=compact-v6-logo-spacing/);
+  assert.match(cacheUrl, /_wall_revision=persisted-v1-compact-v6-logo-spacing/);
 });

@@ -111,6 +111,18 @@ Workers note:
 - KV reference format: `kv:logo-key` or `kv://logo-key?mime=image/png`.
 - Default KV binding name is `SPONSOR_ASSETS` (override by `SPECIAL_LOGO_KV_BINDING`).
 
+With `SPONSOR_ASSETS` bound, `/` and `/sponsors.svg` without query parameters share
+a persistent rendered SVG under `sponsor-wall-svg-v1:<renderer revision>`. Edge
+cache misses read this finished image from KV instead of downloading every avatar.
+After 30 minutes, requests return the previous SVG immediately and refresh it in
+the background. Failed refreshes keep the last successful SVG; the stored image
+has no expiration. Query variants keep their own edge cache and never replace the
+canonical snapshot. Concurrent refreshes are coalesced within each Worker isolate.
+An entirely empty persistent cache requires one initial render.
+
+`X-Sponsors-Cache` distinguishes `HIT`, `KV-HIT`, `STALE`, and `MISS`;
+`X-Sponsors-Generated-At` reports when the persistent image was last generated.
+
 Example KV upload:
 
 ```bash
