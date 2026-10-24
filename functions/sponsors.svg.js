@@ -20,7 +20,7 @@ const OPENCOLLECTIVE_BASE_URL = "https://opencollective.com";
 export async function onRequestGet(context) {
   const cache = caches.default;
   const cacheUrl = new URL(context.request.url);
-  cacheUrl.searchParams.set('_wall_revision', 'compact-v4-thumbnails');
+  cacheUrl.searchParams.set('_wall_revision', 'compact-v5-original-logos');
   const cacheKey = new Request(cacheUrl, context.request);
   const cached = await cache.match(cacheKey);
   if (cached) {
@@ -102,7 +102,7 @@ export async function onRequestGet(context) {
         "content-type": "image/svg+xml; charset=utf-8",
         "cache-control": `public, max-age=${CACHE_SECONDS}, s-maxage=${CACHE_SECONDS}, stale-while-revalidate=300`,
         "x-sponsors-count": String(renderedCount),
-        "x-sponsors-renderer": "compact-v4-thumbnails",
+        "x-sponsors-renderer": "compact-v5-original-logos",
         "x-cache-ttl": String(CACHE_SECONDS)
       }
     });

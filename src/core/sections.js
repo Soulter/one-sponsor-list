@@ -45,7 +45,11 @@ export async function renderSections(catalog, options = {}) {
   const sections = parseSections(catalog).sections.filter(section => section.entries.length);
   return Promise.all(sections.map(async section => {
     const entries = section.entries.map(entry => ({...entry,avatarUrl:entry.logo}));
-    const embedded = await embedSponsorAvatars(entries, options);
+    // Wordmarks need their original pixels; the 160px avatar thumbnail blurs text.
+    const embedded = await embedSponsorAvatars(entries, {
+      ...options,
+      transformImage: section.layout === 'logos' ? undefined : options.transformImage
+    });
     return {id:section.id,title:section.title,type:section.layout === 'logos' ? 'special' : 'all',
       sponsors:embedded.map(entry => ({...entry,logoDataUri:entry.avatarDataUri}))};
   }));
