@@ -20,7 +20,7 @@ const OPENCOLLECTIVE_BASE_URL = "https://opencollective.com";
 export async function onRequestGet(context) {
   const cache = caches.default;
   const cacheUrl = new URL(context.request.url);
-  cacheUrl.searchParams.set('_wall_revision', 'compact-v5-original-logos');
+  cacheUrl.searchParams.set('_wall_revision', 'compact-v6-logo-spacing');
   const cacheKey = new Request(cacheUrl, context.request);
   const cached = await cache.match(cacheKey);
   if (cached) {
@@ -83,7 +83,9 @@ export async function onRequestGet(context) {
     const managed = context.env.SPONSOR_ASSETS ? await context.env.SPONSOR_ASSETS.get(SECTIONS_KEY, 'json') : null;
     const useTier = parseBoolean(url.searchParams.get("useTier"), workerTierConfig.enabled || Boolean(managed));
     const svgOptions = buildSvgOptions(url, managed
-      ? { showNames: false, allAvatarSize: 40, gap: 10, padding: 24, width: 800, allTitleGap: 20 }
+      ? { showNames: false, allAvatarSize: 40, gap: 10, padding: 24, width: 800, allTitleGap: 20,
+          // SAI retains about 7px of internal padding, yielding a visible gap of 54px.
+          specialLogoGap: 47 }
       : workerTierConfig.config.svg ?? {});
 
     let svg;
@@ -102,7 +104,7 @@ export async function onRequestGet(context) {
         "content-type": "image/svg+xml; charset=utf-8",
         "cache-control": `public, max-age=${CACHE_SECONDS}, s-maxage=${CACHE_SECONDS}, stale-while-revalidate=300`,
         "x-sponsors-count": String(renderedCount),
-        "x-sponsors-renderer": "compact-v5-original-logos",
+        "x-sponsors-renderer": "compact-v6-logo-spacing",
         "x-cache-ttl": String(CACHE_SECONDS)
       }
     });
