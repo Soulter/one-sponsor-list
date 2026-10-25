@@ -23,8 +23,14 @@ const OPENCOLLECTIVE_BASE_URL = "https://opencollective.com";
 export async function onRequestGet(context) {
   const cache = caches.default;
   const url = new URL(context.request.url);
-  const canonical = !url.search && ['/', '/sponsors.svg'].includes(url.pathname);
-  const cacheUrl = new URL(url);
+  // README image URLs use v only to change GitHub's image-proxy URL, not rendering.
+  const snapshotUrl = new URL(url);
+  snapshotUrl.searchParams.delete('v');
+  const canonical = !snapshotUrl.search && ['/', '/sponsors.svg'].includes(url.pathname);
+  const snapshotContext = canonical && url.search
+    ? { ...context, request: new Request(snapshotUrl, context.request) }
+    : context;
+  const cacheUrl = new URL(canonical ? snapshotUrl : url);
   cacheUrl.searchParams.set('_wall_revision', `persisted-v1-${RENDERER}`);
   const cacheKey = new Request(cacheUrl, { method: 'GET' });
   let cached;
@@ -51,7 +57,7 @@ export async function onRequestGet(context) {
         && snapshot.generatedAt <= Date.now() && Number.isInteger(snapshot.count) && snapshot.count >= 0) {
       const stale = Date.now() - snapshot.generatedAt >= CACHE_SECONDS * 1000;
       if (stale) {
-        context.waitUntil(refreshSnapshot(context).catch(error => {
+        context.waitUntil(refreshSnapshot(snapshotContext).catch(error => {
           console.warn('Sponsor snapshot refresh failed:', error.message);
         }));
       }
@@ -62,7 +68,7 @@ export async function onRequestGet(context) {
       return response;
     }
     try {
-      const response = snapshotResponse(await refreshSnapshot(context), 'MISS');
+      const response = snapshotResponse(await refreshSnapshot(snapshotContext), 'MISS');
       context.waitUntil(cache.put(cacheKey, response.clone()).catch(error => {
         console.warn('Sponsor edge cache write failed:', error.message);
       }));

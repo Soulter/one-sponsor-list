@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { onRequestGet, SNAPSHOT_KEY } from '../functions/sponsors.svg.js';
+import { DIRECTORY_KEY } from '../src/core/profiles.js';
 
 const oldSvg = '<svg xmlns="http://www.w3.org/2000/svg"><title>Last good wall</title></svg>';
 const upstream = () => Response.json({ec: 200, data: {list: [
@@ -38,6 +39,43 @@ test('a fresh persisted wall fills an empty edge cache without fetching upstream
   await fixture.drain();
   assert.equal((await fixture.run()).headers.get('x-sponsors-cache'), 'HIT');
   assert.deepEqual(fixture.writes, []);
+});
+
+test('README version URLs share the canonical persistent and edge caches', async t => {
+  const fixture = setup(t, {svg: oldSvg, count: 49, generatedAt: Date.now()});
+  t.mock.method(globalThis, 'fetch', async () => assert.fail('README URLs must not regenerate on a fresh snapshot'));
+  assert.equal((await fixture.run('/?v=1')).headers.get('x-sponsors-cache'), 'KV-HIT');
+  await fixture.drain();
+  for (const path of ['/', '/?v=2', '/?v=1&v=2']) {
+    const response = await fixture.run(path);
+    assert.equal(response.headers.get('x-sponsors-cache'), 'HIT');
+    assert.equal(await response.text(), oldSvg);
+  }
+  assert.equal(await (await fixture.run('/sponsors.svg?v=1')).text(), oldSvg);
+  await fixture.drain();
+  assert.deepEqual(fixture.writes, []);
+});
+
+test('README URLs keep serving the persisted image when Afdian returns HTTP 521', async t => {
+  const snapshot = {svg: oldSvg, count: 49, generatedAt: Date.now() - 3_600_000};
+  const fixture = setup(t, snapshot);
+  t.mock.method(console, 'warn', () => {});
+  t.mock.method(globalThis, 'fetch', async () => new Response('Origin down', {status: 521}));
+  const response = await fixture.run('/?v=1');
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('x-sponsors-cache'), 'STALE');
+  assert.equal(await response.text(), oldSvg);
+  await fixture.drain();
+  assert.equal(fixture.store.get(SNAPSHOT_KEY), snapshot);
+});
+
+test('a README-triggered background refresh also updates the complete sponsor directory', async t => {
+  const fixture = setup(t, {svg: oldSvg, count: 49, generatedAt: Date.now() - 3_600_000});
+  t.mock.method(globalThis, 'fetch', async () => upstream());
+  assert.equal(await (await fixture.run('/?v=1')).text(), oldSvg);
+  await fixture.drain();
+  assert.equal(fixture.store.get(DIRECTORY_KEY).sponsors[0].name, 'Updated sponsor');
+  assert.match(fixture.store.get(SNAPSHOT_KEY).svg, /Updated sponsor/);
 });
 
 test('stale requests return immediately, share a background refresh, then serve the updated wall', async t => {
@@ -91,7 +129,7 @@ test('query previews neither use nor replace the canonical persisted SVG', async
   const snapshot = {svg: oldSvg, count: 49, generatedAt: Date.now()};
   const fixture = setup(t, snapshot);
   t.mock.method(globalThis, 'fetch', async () => upstream());
-  const preview = await fixture.run('/?limit=1&showNames=true');
+  const preview = await fixture.run('/?v=1&limit=1&showNames=true');
   assert.equal(preview.headers.get('x-sponsors-cache'), 'MISS');
   assert.match(await preview.text(), /Updated sponsor/);
   await fixture.drain();
