@@ -186,6 +186,32 @@ Notes:
 node --test
 ```
 
+## Model-provider visibility (AstrBot deployment)
+
+The companion `astrbot-sponsors-catalog` Worker at `/webui` offers **暂时隐藏**
+and **恢复显示** for each model-provider sponsor. Hidden entries remain in the
+administrative catalog with their ID, order, translations and integration settings.
+Editing a hidden entry retains its visibility; newly created and existing records
+without the optional boolean `hidden` field remain visible.
+
+`/providers.json` excludes hidden entries on the server and omits the administrative
+flag, so existing AstrBot clients need no update. An entirely hidden catalog returns
+a valid empty list. Existing user configurations are unaffected. Publication uses
+the existing edge cache (up to 30 minutes) and client cache (up to 6 hours).
+
+`catalog/app.js`, `catalog/visibility.mjs` and `catalog/visibility.css` hold this
+feature's source. The companion's other modules were deployed separately; prepare
+an update from a **fresh download** of that Worker's module files:
+
+```bash
+node scripts/patch-catalog-worker.mjs /path/to/downloaded-modules /path/to/updated-modules
+```
+
+The integration checks its expected source anchors and fails if they have changed.
+Deploy all resulting modules using Cloudflare's script-content update endpoint,
+with `index.js` as the main ES module, retaining existing bindings and Access settings.
+This changes the companion Worker only; it does not redeploy the SVG renderer.
+
 ## Display profiles (AstrBot deployment)
 
 The Worker reads optional per-sponsor display overrides from `SPONSOR_ASSETS` KV
