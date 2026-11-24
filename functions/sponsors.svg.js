@@ -14,7 +14,7 @@ import { renderSponsorSvg, renderSponsorTierSvg } from "../src/render/svg.js";
 import { md5 } from "../src/edge/md5.js";
 
 const CACHE_SECONDS = 60 * 30;
-const RENDERER = 'compact-v7-vertical-spacing';
+const RENDERER = 'compact-v8-yuzu-svg';
 export const SNAPSHOT_KEY = `sponsor-wall-svg-v1:${RENDERER}`;
 const refreshes = new Map();
 const AFDIAN_API_URL = "https://afdian.com/api/open/query-sponsor";
