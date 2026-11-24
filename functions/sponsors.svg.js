@@ -14,7 +14,7 @@ import { renderSponsorSvg, renderSponsorTierSvg } from "../src/render/svg.js";
 import { md5 } from "../src/edge/md5.js";
 
 const CACHE_SECONDS = 60 * 30;
-const RENDERER = 'compact-v6-logo-spacing';
+const RENDERER = 'compact-v7-vertical-spacing';
 export const SNAPSHOT_KEY = `sponsor-wall-svg-v1:${RENDERER}`;
 const refreshes = new Map();
 const AFDIAN_API_URL = "https://afdian.com/api/open/query-sponsor";
@@ -187,7 +187,8 @@ async function generateSponsorSvg(context) {
     const managed = context.env.SPONSOR_ASSETS ? await context.env.SPONSOR_ASSETS.get(SECTIONS_KEY, 'json') : null;
     const useTier = parseBoolean(url.searchParams.get("useTier"), workerTierConfig.enabled || Boolean(managed));
     const svgOptions = buildSvgOptions(url, managed
-      ? { showNames: false, allAvatarSize: 40, gap: 10, padding: 24, width: 800, allTitleGap: 20,
+      ? { showNames: false, allAvatarSize: 40, gap: 10, padding: 24, width: 800,
+          specialTitleGap: 32, allTitleGap: 32, specialLogoRowGap: 16, sectionGap: 40,
           // SAI retains about 7px of internal padding, yielding a visible gap of 54px.
           specialLogoGap: 47 }
       : workerTierConfig.config.svg ?? {});
@@ -425,6 +426,12 @@ function buildSvgOptions(url, baseSvgConfig = {}) {
     specialLogoGap: parseNumber(
       url.searchParams.get("specialLogoGap"),
       Number(baseSvgConfig.specialLogoGap ?? 16),
+      0,
+      256
+    ),
+    specialLogoRowGap: parseNumber(
+      url.searchParams.get("specialLogoRowGap"),
+      Number(baseSvgConfig.specialLogoRowGap ?? 16),
       0,
       256
     ),

@@ -92,3 +92,23 @@ test("render special tier logos in horizontal layout", () => {
   assert.match(svg, /<image x="192" y="48" width="200" height="75"/);
   assert.match(svg, /<image x="408" y="48" width="200" height="75"/);
 });
+
+test('wrapped brands use a smaller row gap without narrowing columns or title spacing', () => {
+  const svg = renderSponsorTierSvg([
+    {id: 'special', type: 'special', title: 'Special Sponsors', sponsors:
+      ['First', 'Second', 'Third', 'Fourth'].map(name => ({name, logoDataUri: 'data:image/png;base64,AAAA'}))},
+    {id: 'all', type: 'all', title: 'All Sponsors', sponsors:
+      [{name: 'Person', avatarDataUri: 'data:image/png;base64,BBBB'}]}
+  ], {padding: 24, specialTitleGap: 32, allTitleGap: 32, specialLogoGap: 47,
+    specialLogoRowGap: 16, sectionGap: 40, allAvatarSize: 40});
+  const images = [...svg.matchAll(/<image x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)"/g)]
+    .map(match => match.slice(1).map(Number));
+  const titles = [...svg.matchAll(/<text x="[\d.]+" y="([\d.]+)"/g)].map(match => Number(match[1]));
+  assert.equal(images[0][1] - titles[0], 32);
+  assert.equal(images[1][0] - images[0][0] - images[0][2], 47);
+  assert.equal(images[3][1] - images[0][1] - images[0][3], 16);
+  assert.equal(images[4][1] - titles[1], 32);
+  assert.equal(titles[1] - 22 - images[3][1] - images[3][3], 40, 'following title has its own space above it');
+  const canvasHeight = Number(svg.match(/^<svg[^>]* height="(\d+)"/)[1]);
+  assert.equal(canvasHeight, images[4][1] + images[4][3] + 24);
+});

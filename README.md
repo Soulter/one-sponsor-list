@@ -233,6 +233,11 @@ avatar and visible name. Custom images fall back to platform images on failure.
 
 ### Independent special sections
 
+The managed wall uses 32px between each section title and its logos/avatars.
+Special logos retain a 47px horizontal gap, with an independent 16px row gap.
+Sections have 40px of separation above the next title.
+Use `?specialLogoRowGap=16` to preview the row gap without changing column spacing.
+
 The companion panel at `/webui/sections` publishes `sponsor-wall-sections-v1` to
 `SPONSOR_ASSETS`. This config contains separate Special Sponsors and Special
 Contributors sections, editable titles, `logos` or `avatars` layouts, and ordered

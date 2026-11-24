@@ -17,7 +17,8 @@ const DEFAULT_OPTIONS = {
   titleColor: "#777777",
   fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif",
   specialLogoWidth: 200,
-  specialLogoGap: 16
+  specialLogoGap: 16,
+  specialLogoRowGap: 16
 };
 
 export function renderSponsorSvg(sponsors, options = {}) {
@@ -154,6 +155,7 @@ function renderSpecialTierItems(sponsors, input) {
   const logoWidth = resolveSpecialLogoWidth(opt);
   const logoHeight = Math.round((logoWidth * 75) / 200);
   const logoGap = Math.max(0, Number(opt.specialLogoGap ?? 16));
+  const rowGap = Math.max(0, Number(opt.specialLogoRowGap ?? 16));
   const contentWidth = Math.max(logoWidth, input.width - opt.padding * 2);
   const maxPerRow = Math.max(1, Math.floor((contentWidth + logoGap) / (logoWidth + logoGap)));
   const rows = Math.ceil(renderableSponsors.length / maxPerRow);
@@ -167,7 +169,7 @@ function renderSpecialTierItems(sponsors, input) {
     const rowWidth = rowItemCount * logoWidth + (rowItemCount - 1) * logoGap;
     const rowStartX = (input.width - rowWidth) / 2;
     const logoX = rowStartX + col * (logoWidth + logoGap);
-    const logoY = input.startY + row * (logoHeight + logoGap);
+    const logoY = input.startY + row * (logoHeight + rowGap);
     const imageNode = `<title>${escapeXml(sponsor.name ?? "")}</title><image x="${logoX}" y="${logoY}" width="${logoWidth}" height="${logoHeight}" href="${escapeXml(sponsor.logoDataUri)}" preserveAspectRatio="xMidYMid meet"/>`;
     if (sponsor.profileUrl) {
       nodes.push(
@@ -180,7 +182,7 @@ function renderSpecialTierItems(sponsors, input) {
 
   return {
     nodes,
-    height: rows * logoHeight + (rows - 1) * logoGap
+    height: rows * logoHeight + (rows - 1) * rowGap
   };
 }
 
